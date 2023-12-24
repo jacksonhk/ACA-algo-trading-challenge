@@ -33,7 +33,7 @@ class AlgoEvent:
                 self.arr_closeX.append(bd[self.myinstrument_X]['lastPrice'])
                 return
             
-            if bd[self.myinstrument_Y]['timestamp'] >= self.lasttradetime + timedelta(hours = 24):
+            if bd[self.myinstrument_Y]['timestamp'] >= self.lasttradetime + timedelta(minutes = 5):
                 self.lasttradetime = bd[self.myinstrument_Y]['timestamp']
                 # collect observations
                 self.arr_closeY.append(bd[self.myinstrument_Y]['lastPrice'])
@@ -55,14 +55,14 @@ class AlgoEvent:
                 diff = self.arr_closeY[-1] - coeff_b*self.arr_closeX[-1]
                 z_score = diff / np.sqrt(mse)  # Calculate the z-score using the mean squared error (mse)
                 
-                if z_score > 1.0:  # regard Y as overpriced, X as underpriced
+                if z_score > 2.0:  # regard Y as overpriced, X as underpriced
                     self.orderPairCnt += 1 # increment number of pair by 1
                     self.openOrder(-1, self.myinstrument_Y, self.orderPairCnt, 1)  #short Y
                     if coeff_b>0:
                         self.openOrder(1, self.myinstrument_X, self.orderPairCnt, abs(round(coeff_b,2)))   #long X
                     else:
                         self.openOrder(-1, self.myinstrument_X, self.orderPairCnt, abs(round(coeff_b,2)))   #short X
-                elif z_score < -1.0:  # regard Y as underpriced, X as overpriced
+                elif z_score < -2.0:  # regard Y as underpriced, X as overpriced
                     self.orderPairCnt += 1 # increment number of pair by 1
                     self.openOrder(1, self.myinstrument_Y, self.orderPairCnt, 1)  #long Y
                     if coeff_b>0:
@@ -148,4 +148,7 @@ class AlgoEvent:
     # TODO2: set rule to stop opening new position if there is existing positions
     
     # TODO3: Stop loss logic (do this first)
+    # TODO4: z-score graph and price graph using plt
+
+
 
