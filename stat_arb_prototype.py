@@ -2,6 +2,8 @@
 from AlgoAPI import AlgoAPIUtil, AlgoAPI_Backtest
 from datetime import datetime, timedelta
 import statsmodels.api as sm
+import matplotlib.pyplot as plt
+import numpy as np
 
 class AlgoEvent:
     def __init__(self):
@@ -24,6 +26,7 @@ class AlgoEvent:
 
     def on_bulkdatafeed(self, isSync, bd, ab):
         if isSync:
+            # fill the entire initial array with data before actual trading the algo
             if not self.count > self.arrSize:
                 self.count += 1
                 self.arr_closeY.append(bd[self.myinstrument_Y]['lastPrice'])
@@ -43,23 +46,24 @@ class AlgoEvent:
                 # fit linear regression
                 Y = self.arr_closeY
                 X = self.arr_closeX
-                X = sm.add_constant(X)   #add this line if you want to include intercept in the regression
+                #X = sm.add_constant(X)   #add this line if you want to include intercept in the regression // should not add since the mean is irrelevant in stat arb
                 model = sm.OLS(Y, X)
                 results = model.fit()
                 self.evt.consoleLog(results.summary())
                 coeff_b, tvalue, mse = results.params[-1], results.tvalues, results.mse_resid
                 # compute current residual, e = Y - b*X
                 diff = self.arr_closeY[-1] - coeff_b*self.arr_closeX[-1]
+                z_score = diff / np.sqrt(mse)  # Calculate the z-score using the mean squared error (mse)
                 
-                if diff>0.1*mse:  # regard Y as overpriced, X as underpriced
-                    self.orderPairCnt += 1
+                if z_score > 1.0:  # regard Y as overpriced, X as underpriced
+                    self.orderPairCnt += 1 # increment number of pair by 1
                     self.openOrder(-1, self.myinstrument_Y, self.orderPairCnt, 1)  #short Y
                     if coeff_b>0:
                         self.openOrder(1, self.myinstrument_X, self.orderPairCnt, abs(round(coeff_b,2)))   #long X
                     else:
                         self.openOrder(-1, self.myinstrument_X, self.orderPairCnt, abs(round(coeff_b,2)))   #short X
-                elif diff<-0.1*mse:  # regard Y as underpriced, X as overpriced
-                    self.orderPairCnt += 1
+                elif z_score < -1.0:  # regard Y as underpriced, X as overpriced
+                    self.orderPairCnt += 1 # increment number of pair by 1
                     self.openOrder(1, self.myinstrument_Y, self.orderPairCnt, 1)  #long Y
                     if coeff_b>0:
                         self.openOrder(-1, self.myinstrument_X, self.orderPairCnt, abs(round(coeff_b,2)))   #short X
@@ -71,21 +75,29 @@ class AlgoEvent:
             if len(myPair)>0:
                 for tradeID, tradeID2 in myPair.items():
                     # detail for tradeID
-                    instrument1 = self.osOrder[tradeID]['instrument']
-                    buysell1 = self.osOrder[tradeID]['buysell']
-                    openprice1 = self.osOrder[tradeID]['openprice']
-                    Volume1 = self.osOrder[tradeID]['Volume']
-                    # detail for tradeID2
-                    instrument2 = self.osOrder[tradeID2]['instrument']
-                    buysell2 = self.osOrder[tradeID2]['buysell']
-                    openprice2 = self.osOrder[tradeID2]['openprice']
-                    Volume2 = self.osOrder[tradeID2]['Volume']
-                    # compute total PL for this pair
-                    pairPL = Volume1*buysell1*(bd[instrument1]['lastPrice'] - openprice1) + Volume2*buysell2*(bd[instrument2]['lastPrice'] - openprice2) 
-                    # close the pair orders
-                    if pairPL > self.myTakeProfit:
-                        self.closeOrder(tradeID)
-                        self.closeOrder(tradeID2)
+                    if tradeID in self.osOrder and tradeID2 in self.osOrder:
+                        instrument1 = self.osOrder[tradeID]['instrument']
+                        buysell1 = self.osOrder[tradeID]['buysell']
+                        openprice1 = self.osOrder[tradeID]['openprice']
+                        Volume1 = self.osOrder[tradeID]['Volume']
+                        # detail for tradeID2
+                        instrument2 = self.osOrder[tradeID2]['instrument']
+                        buysell2 = self.osOrder[tradeID2]['buysell']
+                        openprice2 = self.osOrder[tradeID2]['openprice']
+                        Volume2 = self.osOrder[tradeID2]['Volume']
+                        # compute total PL for this pair
+                        # pair 1 - pair 2
+                        pairPL = Volume1*buysell1*(bd[instrument1]['lastPrice'] - openprice1) + Volume2*buysell2*(bd[instrument2]['lastPrice'] - openprice2) 
+                        # close the pair orders
+                        
+                        #TODO: better TakeProfit logic
+                        if pairPL > self.myTakeProfit:
+                            self.closeOrder(tradeID)
+                            self.closeOrder(tradeID2)
+                    else:
+                        # error handling log
+                        error_msg = f"The following tradeID does not exist: {tradeID}, {tradeID2}"
+                        self.evt.consoleLog(error_msg)
 
 
     def matchPairTradeID(self):
@@ -124,12 +136,16 @@ class AlgoEvent:
         pass
 
     def on_dailyPLfeed(self, pl):
-        acdate = pl['Acdate']
-        PL_instru1 = pl[self.myinstrument_X]['TotalPL']
-        PL_instru2 = pl[self.myinstrument_Y]['TotalPL']
-        TotalPL = pl['TotalPL']
-
+        pass
+    
     def on_openPositionfeed(self, op, oo, uo):
         self.osOrder = oo
-
+    
+    # TODO (Done): use z-score instead of diff for open position logic
+        #TODO b.: adjust z-score threshold from 1.0 to others;
+    # TODO: set rule to invest in fixed portion of portfolio 
+    # idea: get fixed portion of portfolio. Then calculate hedge ratio, than calculate the each position as a % of the fixed portfion of portfolio
+    # TODO2: set rule to stop opening new position if there is existing positions
+    
+    # TODO3: Stop loss logic (do this first)
 
