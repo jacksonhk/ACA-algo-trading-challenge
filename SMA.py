@@ -53,12 +53,13 @@ class AlgoEvent:
             self.evt.consoleLog("highprice=", self.highprice)
             self.evt.consoleLog("lowprice=", self.lowprice)
             self.evt.consoleLog("arr_close=", self.arr_close[-self.atr_period:])
-            
             stoploss = 1.5 * atr[-1]
+            
+            nav = ab['NAV']
             # check number of record is at least greater than both self.fastperiod, self.slowperiod
             if not numpy.isnan(self.arr_fastMA[-1]) and not numpy.isnan(self.arr_fastMA[-2]) and not numpy.isnan(self.arr_slowMA[-1]) and not numpy.isnan(self.arr_slowMA[-2]):
                 # send a buy order for Golden Cross
-                volume = self.find_positionSize(lastprice)
+                volume = self.find_positionSize(lastprice, nav)
                 if self.arr_fastMA[-1] > self.arr_slowMA[-1] and self.arr_fastMA[-2] < self.arr_slowMA[-2]:
                     self.test_sendOrder(lastprice, 1, 'open', volume, stoploss)
                 # send a sell order for Death Cross
@@ -87,10 +88,10 @@ class AlgoEvent:
         order.instrument = self.myinstrument
         order.orderRef = 1
         if buysell==1: # buy order
-            order.takeProfitLevel = lastprice*1.2
+            order.takeProfitLevel = lastprice*1.25
             order.stopLossLevel = lastprice - stoploss
         elif buysell==-1:
-            order.takeProfitLevel = lastprice*0.85
+            order.takeProfitLevel = lastprice*0.75
             order.stopLossLevel = lastprice + stoploss
         order.volume = volume
         order.openclose = openclose
@@ -112,20 +113,20 @@ class AlgoEvent:
                 # update the update stop loss using ATR stop
     
     # utility function to find volume based on available balance
-    def find_positionSize(self, lastprice):
+    def find_positionSize(self, lastprice, nav):
         res = self.evt.getAccountBalance()
         availableBalance = res["availableBalance"]
-        ratio = 0.3
-        volume = (availableBalance*ratio) / lastprice
-        total =  availableBalance*ratio
-        while total < 0.3 * availableBalance:
+        ratio = 0.45
+        volume = (nav*ratio) / lastprice
+        total =  volume * lastprice
+        while total < 0.45 * nav:
             ratio *= 1.05
-            volume = (availableBalance*ratio) / lastprice
-            total = availableBalance*ratio
-        while total > availableBalance:
+            volume = (nav*ratio) / lastprice
+            total =  volume * lastprice
+        while total > 0.9 * availableBalance:
             ratio *= 0.95
-            volume = (availableBalance*ratio) / lastprice
-            total = availableBalance*ratio
+            volume = (nav*ratio) / lastprice
+            total =  volume * lastprice
         return volume
     
 
