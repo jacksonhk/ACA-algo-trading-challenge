@@ -9,11 +9,13 @@ class AlgoEvent:
         self.arr_close = numpy.array([])
         self.arr_fastMA = numpy.array([])
         self.arr_slowMA = numpy.array([])
-        self.fastperiod = 7
-        self.slowperiod = 14
+        self.fastperiod = 14
+        self.slowperiod = 30
         self.highprice = numpy.array([])
         self.lowprice = numpy.array([])
         self.atr_period = 14
+        
+        self.openOrder = {}
 
     def start(self, mEvt):
         self.myinstrument = mEvt['subscribeList'][0]
@@ -52,16 +54,20 @@ class AlgoEvent:
             self.evt.consoleLog("lowprice=", self.lowprice)
             self.evt.consoleLog("arr_close=", self.arr_close[-self.atr_period:])
             
+            stoploss = 1.5 * atr[-1]
             # check number of record is at least greater than both self.fastperiod, self.slowperiod
             if not numpy.isnan(self.arr_fastMA[-1]) and not numpy.isnan(self.arr_fastMA[-2]) and not numpy.isnan(self.arr_slowMA[-1]) and not numpy.isnan(self.arr_slowMA[-2]):
                 # send a buy order for Golden Cross
-                volume = self.tune_positionSize(lastprice)
-                stoploss = 1.5 * atr[-1]
+                volume = self.find_positionSize(lastprice)
                 if self.arr_fastMA[-1] > self.arr_slowMA[-1] and self.arr_fastMA[-2] < self.arr_slowMA[-2]:
                     self.test_sendOrder(lastprice, 1, 'open', volume, stoploss)
                 # send a sell order for Death Cross
                 if self.arr_fastMA[-1] < self.arr_slowMA[-1] and self.arr_fastMA[-2] > self.arr_slowMA[-2]:
                     self.test_sendOrder(lastprice, -1, 'open', volume, stoploss)
+            
+            # update takeprofit and stoploss point dynamically
+            if self.openOrder:
+                self.update_stoploss(stoploss)
 
     def on_marketdatafeed(self, md, ab):
         pass
@@ -81,10 +87,10 @@ class AlgoEvent:
         order.instrument = self.myinstrument
         order.orderRef = 1
         if buysell==1: # buy order
-            order.takeProfitLevel = lastprice*1.1
+            order.takeProfitLevel = lastprice*1.2
             order.stopLossLevel = lastprice - stoploss
         elif buysell==-1:
-            order.takeProfitLevel = lastprice*0.9
+            order.takeProfitLevel = lastprice*0.85
             order.stopLossLevel = lastprice + stoploss
         order.volume = volume
         order.openclose = openclose
@@ -92,23 +98,36 @@ class AlgoEvent:
         order.ordertype = 0 #0=market_order, 1=limit_order, 2=stop_order
         self.evt.sendOrder(order)
     
+    # ATR trailing stop implementation
+    def update_stoploss(self, new_stoploss):
+        for ID in self.openOrder:
+            openPosition = self.openOrder[ID]
+            if openPosition['buysell'] == 1 and openPosition['stopLossLevel'] < openPosition['openprice'] - new_stoploss: 
+                # for buy ordder, update stop loss if current ATR stop is higher than previous 
+                res = self.evt.update_opened_order(tradeID=ID, sl = openPosition['openprice'] - new_stoploss)
+                # update the update stop loss using ATR stop
+            elif openPosition['buysell'] == -1 and openPosition['openprice'] + new_stoploss < openPosition['stopLossLevel']: 
+                # for buy ordder, update stop loss if current ATR stop is higher than previous 
+                res = self.evt.update_opened_order(tradeID=ID, sl = openPosition['openprice'] + new_stoploss)
+                # update the update stop loss using ATR stop
     
-    # utility function to tune volume based on available balance
-    def tune_positionSize(self, lastprice):
+    # utility function to find volume based on available balance
+    def find_positionSize(self, lastprice):
         res = self.evt.getAccountBalance()
         availableBalance = res["availableBalance"]
-        Y_ratio = 0.5
-        Y_position = (availableBalance*Y_ratio) / lastprice
-        total =  availableBalance*Y_ratio
-        while total < 0.5 * availableBalance:
-            Y_ratio *= 1.05
-            Y_position = (availableBalance*Y_ratio) / lastprice
-            total = availableBalance*Y_ratio
+        ratio = 0.3
+        volume = (availableBalance*ratio) / lastprice
+        total =  availableBalance*ratio
+        while total < 0.3 * availableBalance:
+            ratio *= 1.05
+            volume = (availableBalance*ratio) / lastprice
+            total = availableBalance*ratio
         while total > availableBalance:
-            Y_ratio *= 0.95
-            Y_position = (availableBalance*Y_ratio) / lastprice
-            total = availableBalance*Y_ratio
-        return Y_position
+            ratio *= 0.95
+            volume = (availableBalance*ratio) / lastprice
+            total = availableBalance*ratio
+        return volume
     
+
 
 
