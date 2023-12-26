@@ -10,10 +10,10 @@ class AlgoEvent:
         self.arr_slowMA = numpy.array([])
         self.fastperiod = 7
         self.slowperiod = 14
-        
         self.highprice = numpy.array([])
         self.lowprice = numpy.array([])
-        self.atr_period = 14
+        self.atr_period = 21
+        self.atr_fit_period = 14
 
     def start(self, mEvt):
         self.myinstrument = mEvt['subscribeList'][0]
@@ -31,10 +31,10 @@ class AlgoEvent:
             if len(self.arr_close)>int(self.fastperiod+self.slowperiod):
                 self.arr_close = self.arr_close[-int(self.fastperiod+self.slowperiod):]
             # keep the most recent observations
-            if len(self.highprice)>self.atr_period:
+            if len(self.highprice)>=self.atr_period:
                 self.highprice = self.highprice[-self.atr_period:]
             # keep the most recent observations
-            if len(self.lowprice)>self.atr_period:
+            if len(self.lowprice)>=self.atr_period:
                 self.lowprice = self.lowprice[-self.atr_period:]
                 
             # fit SMA line
@@ -44,14 +44,18 @@ class AlgoEvent:
             self.evt.consoleLog("arr_fastMA=", self.arr_fastMA)
             self.evt.consoleLog("arr_slowMA=", self.arr_slowMA)
             
-            atr = talib.ATR(self.highprice, self.lowprice, self.arr_close[-self.atr_period:], timeperiod=int(self.atr_period))
+            atr = talib.ATR(self.highprice, self.lowprice, self.arr_close[-self.atr_period:], timeperiod=self.atr_fit_period)
+            self.evt.consoleLog("atr=", atr[-1])
             
+            self.evt.consoleLog("highprice=", self.highprice)
+            self.evt.consoleLog("lowprice=", self.lowprice)
+            self.evt.consoleLog("arr_close=", self.arr_close[-self.atr_period:])
             
             # check number of record is at least greater than both self.fastperiod, self.slowperiod
             if not numpy.isnan(self.arr_fastMA[-1]) and not numpy.isnan(self.arr_fastMA[-2]) and not numpy.isnan(self.arr_slowMA[-1]) and not numpy.isnan(self.arr_slowMA[-2]):
                 # send a buy order for Golden Cross
                 volume = self.tune_positionSize(lastprice)
-                stoploss = 2 * atr
+                stoploss = 2 * atr[-1]
                 if self.arr_fastMA[-1] > self.arr_slowMA[-1] and self.arr_fastMA[-2] < self.arr_slowMA[-2]:
                     self.test_sendOrder(lastprice, 1, 'open', volume, stoploss)
                 # send a sell order for Death Cross
@@ -75,7 +79,7 @@ class AlgoEvent:
         order = AlgoAPIUtil.OrderObject()
         order.instrument = self.myinstrument
         order.orderRef = 1
-        if buysell==1:
+        if buysell==1: # buy order
             order.takeProfitLevel = lastprice*1.1
             order.stopLossLevel = lastprice - stoploss
         elif buysell==-1:
