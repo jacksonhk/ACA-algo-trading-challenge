@@ -1,4 +1,5 @@
 
+
 from AlgoAPI import AlgoAPIUtil, AlgoAPI_Backtest
 from datetime import datetime, timedelta
 import talib, numpy
@@ -9,8 +10,8 @@ class AlgoEvent:
         self.arr_close = numpy.array([])
         self.arr_fastMA = numpy.array([])
         self.arr_slowMA = numpy.array([])
-        self.fastperiod = 14
-        self.slowperiod = 30
+        self.fastperiod = 20
+        self.slowperiod = 50
         self.highprice = numpy.array([])
         self.lowprice = numpy.array([])
         self.atr_period = 14
@@ -66,6 +67,11 @@ class AlgoEvent:
                 if self.arr_fastMA[-1] < self.arr_slowMA[-1] and self.arr_fastMA[-2] > self.arr_slowMA[-2]:
                     self.test_sendOrder(lastprice, -1, 'open', volume, stoploss)
             
+            # TODO: Average up (increase stake) logic: throwback and pullback handling for 
+            
+            
+            # TODO: Ranging market filtering indicator
+            
             # update takeprofit and stoploss point dynamically
             if self.openOrder:
                 self.update_stoploss(stoploss)
@@ -88,10 +94,10 @@ class AlgoEvent:
         order.instrument = self.myinstrument
         order.orderRef = 1
         if buysell==1: # buy order
-            order.takeProfitLevel = lastprice*1.25
+            order.takeProfitLevel = lastprice + 1.5 * stoploss
             order.stopLossLevel = lastprice - stoploss
         elif buysell==-1:
-            order.takeProfitLevel = lastprice*0.75
+            order.takeProfitLevel = lastprice - 1.5 * stoploss
             order.stopLossLevel = lastprice + stoploss
         order.volume = volume
         order.openclose = openclose
@@ -116,10 +122,10 @@ class AlgoEvent:
     def find_positionSize(self, lastprice, nav):
         res = self.evt.getAccountBalance()
         availableBalance = res["availableBalance"]
-        ratio = 0.45
+        ratio = 0.9
         volume = (nav*ratio) / lastprice
         total =  volume * lastprice
-        while total < 0.45 * nav:
+        while total < 0.9 * nav:
             ratio *= 1.05
             volume = (nav*ratio) / lastprice
             total =  volume * lastprice
@@ -129,6 +135,7 @@ class AlgoEvent:
             total =  volume * lastprice
         return volume
     
+
 
 
 
