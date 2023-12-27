@@ -9,4 +9,4 @@ Crypto:
    Stop loss: position losses > 2%
 
 2. Momentum Based Strategy (Current):
-   pass
+   Current plan: try with EMA 5-8-13 scalping with filters for more signals in intraday
