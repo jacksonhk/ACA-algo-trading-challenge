@@ -111,14 +111,16 @@ class AlgoEvent:
                     volume = self.find_positionSize(lastprice, nav)
                     self.test_sendOrder(lastprice, -1, 'open', volume, stoploss)
             
-            # TODO: Average up (increase stake) logic: throwback and pullback handling for 
+            # TODO: Average up (increase stake) logic: pullback handling
             
             
             # TODO: Ranging market filtering indicator
             
-            # update takeprofit and stoploss point dynamically
+            # update stoploss point dynamically
             if self.openOrder:
                 self.update_stoploss(stoploss)
+
+            # TODO: better take profit logic
 
     def on_marketdatafeed(self, md, ab):
         pass
