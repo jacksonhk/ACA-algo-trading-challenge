@@ -9,15 +9,15 @@ Crypto:
    Stop loss: position losses > 2%
 
 2. Momentum Based Strategy (Current):
-   Current status: Singal generation: EMA 5-8-13 scalping + price cross long term EMA (50)
-                   Range Filters: ADXR, AROON Oscillator
-                   Momentum Filters: APO, MACD, AROON Oscillator, Price above long term EMA, Long Term EMA rising
-                   Time Horizon: 6 hours
-                   Stop loss: ATR trailing stop; Take profit (static): 2X stop loss 
-   Development Plan:
-   1.   Improve Activeness by considering trade opportunity in other instruments
-      aa. Systems to rank trade opportunity
-      ab. Better Take profit
-      ac. Handling ranging market
-      ad. Better Trend Filters (Smoothed HA candles?)
-      ae. Logic to raise stake
+   Current status: Singal generation: EMA 5-8-13 scalping + price cross long term EMA (50)<br />
+                   Range Filters: ADXR, AROON Oscillator<br />
+                   Momentum Filters: APO, MACD, AROON Oscillator, Price above long term EMA, Long Term EMA rising<br />
+                   Time Horizon: 6 hours<br />
+                   Stop loss: ATR trailing stop; Take profit (static): 2X stop loss <br />
+   Development Plan:<br />
+   1.   Improve Activeness by considering trade opportunity in other instruments<br />
+      aa. Systems to rank trade opportunity<br />
+      ab. Better Take profit<br />
+      ac. Handling ranging market<br />
+      ad. Better Trend Filters (Smoothed HA candles?)<br />
+      ae. Logic to raise stake<br />
