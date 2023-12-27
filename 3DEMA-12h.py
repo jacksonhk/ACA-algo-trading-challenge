@@ -1,6 +1,7 @@
 
 
 
+
 from AlgoAPI import AlgoAPIUtil, AlgoAPI_Backtest
 from datetime import datetime, timedelta
 import talib, numpy
@@ -12,15 +13,20 @@ class AlgoEvent:
         self.arr_fastMA = numpy.array([])
         self.arr_midMA = numpy.array([])
         self.arr_slowMA = numpy.array([])
+        self.arr_LongTermMA = numpy.array([])
+        
         self.fastperiod = 5
         self.midperiod = 8
         self.slowperiod = 13
+        self.longperiod = 50
         
         self.highprice = numpy.array([])
         self.lowprice = numpy.array([])
         self.atr_period = 14
+        self.general_period = 14
         
         self.openOrder = {}
+        self.netOrder = {}
 
     def start(self, mEvt):
         self.myinstrument = mEvt['subscribeList'][0]
@@ -28,7 +34,7 @@ class AlgoEvent:
         self.evt.start()
 
     def on_bulkdatafeed(self, isSync, bd, ab):
-        if bd[self.myinstrument]['timestamp'] >= self.lasttradetime + timedelta(hours = 12):
+        if bd[self.myinstrument]['timestamp'] >= self.lasttradetime + timedelta(hours = 6):
             self.lasttradetime = bd[self.myinstrument]['timestamp']
             lastprice = bd[self.myinstrument]['lastPrice']
             self.arr_close = numpy.append(self.arr_close, lastprice)
@@ -63,30 +69,44 @@ class AlgoEvent:
             self.evt.consoleLog("arr_close=", self.arr_close[-self.atr_period:])
             stoploss = 2.0 * atr[-1]
             
+            # Long EMA as a momentum indicator:
+            self.arr_LongTermMA = talib.EMA(self.arr_close, timeperiod=int(self.longperiod))
+            price_above_longtermMA = self.arr_close[-1] >= self.arr_LongTermMA[-1] 
+            LongTermEMA_rising = False
+            price_cross_above_longtermMA = False
+            price_cross_below_longtermMA = False
+            if len(self.arr_LongTermMA) > 1:
+                LongTermEMA_rising = self.arr_LongTermMA[-1] >= self.arr_LongTermMA[-2]
+                price_cross_above_longtermMA = self.arr_close[-1] >= self.arr_LongTermMA[-1] and self.arr_close[-2] <= self.arr_LongTermMA[-2]
+                price_cross_below_longtermMA = self.arr_close[-1] <= self.arr_LongTermMA[-1] and self.arr_close[-2] >= self.arr_LongTermMA[-2]
+            
             # Calculate the ADXR using talib.ADXR
-            adxr = talib.ADXR(self.highprice, self.lowprice, self.arr_close, timeperiod=self.atr_period)
+            adxr = talib.ADXR(self.highprice, self.lowprice, self.arr_close, timeperiod=self.general_period)
             
             # Caclulate the APO for momentum detection
             apo = talib.APO(self.arr_close, self.midperiod, self.slowperiod)
             
             macd, signal, hist = talib.MACD(self.arr_close, self.fastperiod, self.slowperiod, self.midperiod)
             
+            # Calculate Aroon values
+            aroon_up, aroon_down = talib.AROON(self.highprice, self.lowprice, timeperiod=self.general_period)
+            aroonosc = aroon_up - aroon_down
             
             self.evt.consoleLog("ADXR=", adxr[-1])
-            # TODO: Ranging market filtering indicator
-            ranging = self.rangingFilter(adxr[-1])
-            # TODO: Momentum market filtering indicator 
-            bullish = self.momentumFilter(apo[-1], macd)
+            ranging = self.rangingFilter(adxr[-1], aroonosc[-1])
+            bullish = self.momentumFilter(apo[-1], macd, aroonosc, price_above_longtermMA, LongTermEMA_rising)
             nav = ab['NAV']
+            
+            # 5-8-13 EMA crossover implementation: Note: poor performance during ranging market
             # check number of record is at least greater than both self.fastperiod, self.slowperiod
             if not numpy.isnan(self.arr_fastMA[-1]) and not numpy.isnan(self.arr_fastMA[-2]) and not numpy.isnan(self.arr_slowMA[-1]) and not numpy.isnan(self.arr_slowMA[-2]) and not numpy.isnan(self.arr_midMA[-1]) and not numpy.isnan(self.arr_midMA[-2]):
                 # send a buy order for Golden Cross (fastMA above slowMA, midMA crosses above slowMA)
-                if not ranging and bullish and self.arr_fastMA[-1] > self.arr_slowMA[-1] and self.arr_midMA[-1] > self.arr_slowMA[-1] and self.arr_midMA[-2] < self.arr_slowMA[-2]:
+                if (not ranging and bullish == 1) and ((self.arr_fastMA[-1] > self.arr_slowMA[-1] and self.arr_midMA[-1] > self.arr_slowMA[-1] and self.arr_midMA[-2] < self.arr_slowMA[-2]) or price_cross_above_longtermMA):
                     self.closeAllOrder()
                     volume = self.find_positionSize(lastprice, nav)
                     self.test_sendOrder(lastprice, 1, 'open', volume, stoploss)
                 # send a sell order for Death Cross
-                if not ranging and not bullish and self.arr_fastMA[-1] < self.arr_slowMA[-1] and self.arr_midMA[-1] < self.arr_slowMA[-1] and self.arr_midMA[-2] > self.arr_slowMA[-2]:
+                if (not ranging and bullish == -1) and ((self.arr_fastMA[-1] < self.arr_slowMA[-1] and self.arr_midMA[-1] < self.arr_slowMA[-1] and self.arr_midMA[-2] > self.arr_slowMA[-2]) or price_cross_below_longtermMA):
                     self.closeAllOrder()
                     volume = self.find_positionSize(lastprice, nav)
                     self.test_sendOrder(lastprice, -1, 'open', volume, stoploss)
@@ -94,12 +114,11 @@ class AlgoEvent:
             # TODO: Average up (increase stake) logic: throwback and pullback handling for 
             
             
-            # update stoploss point dynamically
+            # TODO: Ranging market filtering indicator
+            
+            # update takeprofit and stoploss point dynamically
             if self.openOrder:
                 self.update_stoploss(stoploss)
-                
-            
-            # TODO: update takeprofit point dynamically
 
     def on_marketdatafeed(self, md, ab):
         pass
@@ -114,25 +133,44 @@ class AlgoEvent:
         self.openOrder = oo
         self.netOrder = op
     
-    def rangingFilter(self, ADXR):
-        if ADXR < 20:
+    def rangingFilter(self, ADXR, AROONOsc):
+        if ADXR < 20 or abs(AROONOsc) < 30:
             return True # ranging market
         else:
             return False
     
-    def momentumFilter(self, APO, MACD):
+    def momentumFilter(self, APO, MACD, AROONOsc, price_above_longtermMA, LongTermEMA_rising):
+        # macd rising check
         MACDRising = False
         if numpy.isnan(MACD[-1]) or numpy.isnan(MACD[-2]):
             MACDRising = False
         elif int(MACD[-1]) > int(MACD[-2]):
             MACDRising = True
-        if APO > 0 and MACDRising:
-            return True # Bullish 
-            
-        elif APO < 0 and not MACDRising:
-            return False # Bearish
+        
+        # aroonosc rising check
+        AROON_direction = 0 # not moving
+        if numpy.isnan(AROONOsc[-1]) or numpy.isnan(AROONOsc[-2]):
+            AROON_direction = 0
+        elif int(AROONOsc[-1]) > int(AROONOsc[-2]):
+            AROON_direction = 1 # moving upwawrds
+        elif int(AROONOsc[-1]) < int(AROONOsc[-2]):
+            AROON_direction = -1 # moving downwards
         else:
-            return # Neither Bullish or Bearish
+            AROON_direction = 0 # not moving
+        
+        AROON_positive = False
+        if numpy.isnan(AROONOsc[-1]):
+            AROON_positive = False
+        elif int(AROONOsc[-1]) > 0:
+            AROON_positive = True
+            
+        if APO > 0 and (MACDRising or AROON_direction == 1 or AROON_positive) and (price_above_longtermMA or LongTermEMA_rising) :
+            return 1 # Bullish 
+            
+        elif APO < 0 and (not MACDRising or AROON_direction == -1 or not AROON_positive) and (not price_above_longtermMA or not LongTermEMA_rising):
+            return -1 # Bearish
+        else:
+            return 0 # Neutral
     
     def test_sendOrder(self, lastprice, buysell, openclose, volume, stoploss):
         order = AlgoAPIUtil.OrderObject()
@@ -192,6 +230,7 @@ class AlgoEvent:
             total =  volume * lastprice
         return volume
     
+
 
 
 
