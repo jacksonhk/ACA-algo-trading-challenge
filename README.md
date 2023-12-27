@@ -8,7 +8,7 @@ Crypto:
    Stop gain: dynamic bound of means
    Stop loss: position losses > 2%
 
-2. Momentum Based Strategy (Current):
+2. Momentum Based Strategy (Current):<br />
    Current status: Singal generation: EMA 5-8-13 scalping + price cross long term EMA (50)<br />
                    Range Filters: ADXR, AROON Oscillator<br />
                    Momentum Filters: APO, MACD, AROON Oscillator, Price above long term EMA, Long Term EMA rising<br />
