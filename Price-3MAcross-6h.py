@@ -232,7 +232,10 @@ class AlgoEvent:
     
 
 
-
+Performance:
+Annual Sharpe Ratio: 1.433
+Annual Sortino Ratio:	3.0935
+Return on 6-month: 12.65%
 
 
 
