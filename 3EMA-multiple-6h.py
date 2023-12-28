@@ -3,6 +3,7 @@
 
 
 
+
 from AlgoAPI import AlgoAPIUtil, AlgoAPI_Backtest
 from datetime import datetime, timedelta
 import talib, numpy
@@ -22,6 +23,7 @@ class AlgoEvent:
         self.lasttradetime = datetime(2000,1,1)
         self.stoploss_atr = 2.5
         
+        self.candidate_no = 3
         self.risk_limit_portfolio = 0.2
         self.cooldown = 15
  
@@ -176,9 +178,9 @@ class AlgoEvent:
                     candidate.append((stoploss_ratio, instrument))
             candidate.sort()
             
-            if count > 2:
-                candidate = candidate[:2]
-                count = 2
+            if count > self.candidate_no:
+                candidate = candidate[:self.candidate_no]
+                count = self.candidate_no
                 
             availableBalance = ab['availableBalance']
             
@@ -187,7 +189,7 @@ class AlgoEvent:
                 if instrument in self.openOrder and self.openOrder[instrument][buysell] != self.instrument_data[instrument]['entry_signal']:
                     self.closeAllOrder(instrument)
                 lastprice = bd[instrument]['lastPrice']
-                volume = self.find_positionSize(lastprice, 1/count * 1/self.no_instrument * availableBalance * 2)
+                volume = self.find_positionSize(lastprice, count/self.candidate_no * 1/self.no_instrument * availableBalance * 2)
                 direction = self.instrument_data[instrument]['entry_signal']
                 stoploss = self.instrument_data[instrument]['stoploss']
                 res = self.test_sendOrder(lastprice, direction, 'open', volume, stoploss, instrument)
