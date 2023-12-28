@@ -23,7 +23,7 @@ class AlgoEvent:
         self.lasttradetime = datetime(2000,1,1)
         self.stoploss_atr = 2.5
         
-        self.candidate_no = 3
+        self.candidate_no = 5
         self.risk_limit_portfolio = 0.2
         self.cooldown = 15
  
@@ -37,7 +37,7 @@ class AlgoEvent:
     def on_bulkdatafeed(self, isSync, bd, ab):
         # adding data for each instrument on every data received
         if isSync:
-            if bd[self.myinstrument]['timestamp'] >= self.lasttradetime + timedelta(hours = 6): 
+            if bd[self.myinstrument]['timestamp'] >= self.lasttradetime + timedelta(hours = 24): 
                 self.lasttradetime = bd[self.myinstrument]['timestamp']
                 # update trade time if timeframe match and continue the code
             else:
@@ -181,7 +181,8 @@ class AlgoEvent:
             if count > self.candidate_no:
                 candidate = candidate[:self.candidate_no]
                 count = self.candidate_no
-                
+            
+            # TODO: count can be used as market breath    
             availableBalance = ab['availableBalance']
             
             #TODO: checking for existing position, if same instrument have existing position, sell the position before opening new one
