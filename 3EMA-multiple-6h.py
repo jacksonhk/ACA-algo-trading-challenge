@@ -22,8 +22,8 @@ class AlgoEvent:
         self.lasttradetime = datetime(2000,1,1)
         self.stoploss_atr = 2.5
         
-        self.risk_limit_portfolio = 0.15
-        self.cooldown = 7
+        self.risk_limit_portfolio = 0.2
+        self.cooldown = 15
  
     def start(self, mEvt):
         self.myinstrument = mEvt['subscribeList'][0]
