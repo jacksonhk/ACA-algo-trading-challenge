@@ -20,11 +20,16 @@ class AlgoEvent:
         self.openOrder = {}
         self.netOrder = {}
         self.lasttradetime = datetime(2000,1,1)
-
+        self.stoploss_atr = 2.5
+        
+        self.risk_limit_portfolio = 0.15
+        self.cooldown = 7
+ 
     def start(self, mEvt):
         self.myinstrument = mEvt['subscribeList'][0]
         self.no_instrument = len(mEvt['subscribeList'])
         self.evt = AlgoAPI_Backtest.AlgoEvtHandler(self, mEvt)
+        self.evt.update_portfolio_sl(sl=self.risk_limit_portfolio, resume_after=60*60*24*self.cooldown)
         self.evt.start()
 
     def on_bulkdatafeed(self, isSync, bd, ab):
@@ -58,7 +63,7 @@ class AlgoEvent:
                 instrument_data['lowprice'] = numpy.append(instrument_data['lowprice'], bd[instrument]['lowPrice'])
                 # keep the most recent observations
                 time_period = (
-                    self.fastperiod + self.midperiod + self.slowperiod + 1
+                    min(self.fastperiod + self.midperiod + self.slowperiod + 1, self.longperiod)
                 )
                     
                 if len(instrument_data['arr_close']) > time_period:
@@ -89,7 +94,7 @@ class AlgoEvent:
                     timeperiod=self.atr_period
                 )
                     
-                instrument_data['stoploss'] = 2.0 * instrument_data['atr'][-1]
+                instrument_data['stoploss'] = self.stoploss_atr * instrument_data['atr'][-1]
                 # Long EMA as a momentum indicator:
                 instrument_data['arr_LongTermMA'] = talib.EMA(instrument_data['arr_close'], timeperiod=self.longperiod)
                     
@@ -104,6 +109,12 @@ class AlgoEvent:
                     price_cross_above_longtermMA = instrument_data['arr_close'][-1] >= instrument_data['arr_LongTermMA'][-1] and instrument_data['arr_close'][-2] <= instrument_data['arr_LongTermMA'][-2]
                     price_cross_below_longtermMA = instrument_data['arr_close'][-1] <= instrument_data['arr_LongTermMA'][-1] and instrument_data['arr_close'][-2] >= instrument_data['arr_LongTermMA'][-2]
                     
+                
+                pullback = False
+                throwback = False
+                if len(instrument_data['arr_close']) > 1:
+                    pullback = instrument_data['arr_close'][-1] > instrument_data['arr_fastMA'][-1] and instrument_data['arr_close'][-2] < instrument_data['arr_fastMA'][-2] and instrument_data['arr_close'][-1] > instrument_data['arr_LongTermMA'][-1]
+                    throwback = instrument_data['arr_close'][-1] < instrument_data['arr_fastMA'][-1] and instrument_data['arr_close'][-2] > instrument_data['arr_fastMA'][-2] and instrument_data['arr_close'][-1] < instrument_data['arr_LongTermMA'][-1]
                     
                 # Calculate the ADXR using talib.ADXR
                 adxr = talib.ADXR(instrument_data['highprice'], instrument_data['lowprice'], instrument_data['arr_close'], timeperiod=self.general_period)
@@ -135,11 +146,11 @@ class AlgoEvent:
                     
                 if not numpy.isnan(instrument_data['arr_fastMA'][-1]) and not numpy.isnan(instrument_data['arr_fastMA'][-2]) and not numpy.isnan(instrument_data['arr_slowMA'][-1]) and not numpy.isnan(instrument_data['arr_slowMA'][-2]) and not numpy.isnan(instrument_data['arr_midMA'][-1]) and not numpy.isnan(instrument_data['arr_midMA'][-2]):
                     # send a buy order for Golden Cross (fastMA above slowMA, midMA crosses above slowMA)
-                    if (not ranging and bullish == 1) and ((instrument_data['arr_fastMA'][-1] > instrument_data['arr_slowMA'][-1] and instrument_data['arr_midMA'][-1] > instrument_data['arr_slowMA'][-1] and instrument_data['arr_midMA'][-2] < instrument_data['arr_slowMA'][-2]) or price_cross_above_longtermMA):
+                    if (not ranging and bullish == 1) and ((instrument_data['arr_fastMA'][-1] > instrument_data['arr_slowMA'][-1] and instrument_data['arr_midMA'][-1] > instrument_data['arr_slowMA'][-1] and instrument_data['arr_midMA'][-2] < instrument_data['arr_slowMA'][-2]) or price_cross_above_longtermMA or pullback):
                         instrument_data['entry_signal'] = 1
                         
                     # send a sell order for Death Cross
-                    elif (not ranging and bullish == -1) and ((instrument_data['arr_fastMA'][-1] < instrument_data['arr_slowMA'][-1] and instrument_data['arr_midMA'][-1] < instrument_data['arr_slowMA'][-1] and instrument_data['arr_midMA'][-2] > instrument_data['arr_slowMA'][-2]) or price_cross_below_longtermMA):
+                    elif (not ranging and bullish == -1) and ((instrument_data['arr_fastMA'][-1] < instrument_data['arr_slowMA'][-1] and instrument_data['arr_midMA'][-1] < instrument_data['arr_slowMA'][-1] and instrument_data['arr_midMA'][-2] > instrument_data['arr_slowMA'][-2]) or price_cross_below_longtermMA or throwback):
                         instrument_data['entry_signal'] = -1
                         
                     else:
@@ -152,22 +163,34 @@ class AlgoEvent:
                 if self.openOrder:
                     self.update_stoploss(instrument, instrument_data['stoploss'])
             
+            # algorithm to rank candidates base on tightness of stoploss to minimize drawdown risk
             count = 0
+            candidate = []
             # checking all instruments for entry signals and find total number of entry signals
             for instrument in bd:
                 if self.instrument_data[instrument]['entry_signal'] == 1 or self.instrument_data[instrument]['entry_signal'] == -1:
                     count += 1
+                    lastprice = self.instrument_data[instrument]['arr_close'][-1]
+                    stoploss = self.instrument_data[instrument]['stoploss']
+                    stoploss_ratio = stoploss / lastprice
+                    candidate.append((stoploss_ratio, instrument))
+            candidate.sort()
+            
+            if count > 2:
+                candidate = candidate[1:]
+                count = 2
                 
             availableBalance = ab['availableBalance']
             
             #TODO: checking for existing position, if same instrument have existing position, sell the position before opening new one
-            for instrument in bd: 
-                if self.instrument_data[instrument]['entry_signal'] == 1 or self.instrument_data[instrument]['entry_signal'] == -1:
-                    lastprice = bd[instrument]['lastPrice']
-                    volume = self.find_positionSize(lastprice, 1/count * 1/self.no_instrument * availableBalance * 2)
-                    direction = self.instrument_data[instrument]['entry_signal']
-                    stoploss = self.instrument_data[instrument]['stoploss']
-                    res = self.test_sendOrder(lastprice, direction, 'open', volume, stoploss, instrument)
+            for stoploss_ratio, instrument in candidate: 
+                if instrument in self.openOrder and self.openOrder[instrument][buysell] != self.instrument_data[instrument]['entry_signal']:
+                    self.closeAllOrder(instrument)
+                lastprice = bd[instrument]['lastPrice']
+                volume = self.find_positionSize(lastprice, 1/count * 1/self.no_instrument * availableBalance * 2)
+                direction = self.instrument_data[instrument]['entry_signal']
+                stoploss = self.instrument_data[instrument]['stoploss']
+                res = self.test_sendOrder(lastprice, direction, 'open', volume, stoploss, instrument)
                     
                
 
@@ -245,10 +268,10 @@ class AlgoEvent:
         order.instrument = instrument
         order.orderRef = 1
         if buysell==1: # buy order
-            order.takeProfitLevel = lastprice + 2.0 * stoploss
+            order.takeProfitLevel = lastprice + 3.0 * stoploss
             order.stopLossLevel = lastprice - stoploss
         elif buysell==-1:
-            order.takeProfitLevel = lastprice - 2.0 * stoploss
+            order.takeProfitLevel = lastprice - 3.0 * stoploss
             order.stopLossLevel = lastprice + stoploss
         order.volume = volume
         order.openclose = openclose
@@ -273,14 +296,18 @@ class AlgoEvent:
         for ID in self.openOrder:
             openPosition = self.openOrder[ID]
             if openPosition['instrument'] == instrument:
-                if openPosition['buysell'] == 1 and openPosition['stopLossLevel'] < openPosition['openprice'] - new_stoploss: 
+                lastprice = self.instrument_data[instrument]['arr_close'][-1]
+                if openPosition['buysell'] == 1 and openPosition['stopLossLevel'] < lastprice - new_stoploss: 
                     # for buy ordder, update stop loss if current ATR stop is higher than previous 
-                    res = self.evt.update_opened_order(tradeID=ID, sl = openPosition['openprice'] - new_stoploss)
+                    newsl_level = lastprice - new_stoploss
+                    res = self.evt.update_opened_order(tradeID=ID, sl = newsl_level)
                     # update the update stop loss using ATR stop
-                elif openPosition['buysell'] == -1 and openPosition['openprice'] + new_stoploss < openPosition['stopLossLevel']: 
+                elif openPosition['buysell'] == -1 and lastprice + new_stoploss < openPosition['stopLossLevel']: 
                     # for buy ordder, update stop loss if current ATR stop is higher than previous 
-                    res = self.evt.update_opened_order(tradeID=ID, sl = openPosition['openprice'] + new_stoploss)
+                    newsl_level = lastprice + new_stoploss
+                    res = self.evt.update_opened_order(tradeID=ID, sl = newsl_level)
                     # update the update stop loss using ATR stop
+                    
         
     # utility function to find volume based on available balance
     def find_positionSize(self, lastprice, allowance):
@@ -299,3 +326,4 @@ class AlgoEvent:
             total =  volume * lastprice
         return volume
     
+
