@@ -2,6 +2,7 @@
 
 
 
+
 from AlgoAPI import AlgoAPIUtil, AlgoAPI_Backtest
 from datetime import datetime, timedelta
 import talib, numpy
@@ -111,13 +112,24 @@ class AlgoEvent:
                 apo = talib.APO(instrument_data['arr_close'], self.midperiod, self.slowperiod)
                     
                 macd, signal, hist = talib.MACD(instrument_data['arr_close'], self.fastperiod, self.slowperiod, self.midperiod)
-                    
+                
+                rsiFast, rsiGeneral = talib.RSI(instrument_data['arr_close'], self.fastperiod), talib.RSI(instrument_data['arr_close'], self.general_period)       
                 # Calculate Aroon values
                 aroon_up, aroon_down = talib.AROON(instrument_data['highprice'], instrument_data['lowprice'], timeperiod=self.general_period)
                 aroonosc = aroon_up - aroon_down
                     
-                ranging = self.rangingFilter(adxr[-1], aroonosc[-1])
-                bullish = self.momentumFilter(apo[-1], macd, aroonosc, price_above_longtermMA, LongTermEMA_rising)
+                # Ranging filter: all short-term moving average move in same direction
+                
+                fast, mid, slow = instrument_data['arr_fastMA'], instrument_data['arr_midMA'], instrument_data['arr_slowMA']
+                all_MA_up, all_MA_down, MA_same_direction = False, False, False
+                if len(fast) > 1 and len(mid) > 1 and len(slow) > 1:
+                    all_MA_up = fast[-1] > fast[-2] and mid[-1] > mid[-2] and slow[-1] > slow[-2]
+                    all_MA_down = fast[-1] < fast[-2] and mid[-1] < mid[-2] and slow[-1] < slow[-2]
+                    MA_same_direction = all_MA_up or all_MA_down
+                    
+                
+                ranging = self.rangingFilter(adxr[-1], aroonosc[-1], MA_same_direction)
+                bullish = self.momentumFilter(apo, macd, rsiFast, rsiGeneral, aroonosc, price_above_longtermMA, LongTermEMA_rising, all_MA_up, all_MA_down)
                     
                     
                     
@@ -147,13 +159,16 @@ class AlgoEvent:
                     count += 1
                 
             availableBalance = ab['availableBalance']
+            
+            #TODO: checking for existing position, if same instrument have existing position, sell the position before opening new one
             for instrument in bd: 
                 if self.instrument_data[instrument]['entry_signal'] == 1 or self.instrument_data[instrument]['entry_signal'] == -1:
                     lastprice = bd[instrument]['lastPrice']
                     volume = self.find_positionSize(lastprice, 1/count * 1/self.no_instrument * availableBalance * 2)
                     direction = self.instrument_data[instrument]['entry_signal']
                     stoploss = self.instrument_data[instrument]['stoploss']
-                    self.test_sendOrder(lastprice, direction, 'open', volume, stoploss, instrument)
+                    res = self.test_sendOrder(lastprice, direction, 'open', volume, stoploss, instrument)
+                    
                
 
     def on_marketdatafeed(self, md, ab):
@@ -169,13 +184,20 @@ class AlgoEvent:
         self.openOrder = oo
         self.netOrder = op
     
-    def rangingFilter(self, ADXR, AROONOsc):
-        if ADXR < 20 or abs(AROONOsc) < 30:
+    def rangingFilter(self, ADXR, AROONOsc, MA_same_direction):
+        if (ADXR < 20 or abs(AROONOsc) < 30) and not MA_same_direction:
             return True # ranging market
         else:
             return False
     
-    def momentumFilter(self, APO, MACD, AROONOsc, price_above_longtermMA, LongTermEMA_rising):
+    def momentumFilter(self, APO, MACD, RSIFast, RSIGeneral, AROONOsc, price_above_longtermMA, LongTermEMA_rising, all_MA_up, all_MA_down):
+        # APO rising check
+        APORising = False
+        if numpy.isnan(APO[-1]) or numpy.isnan(APO[-2]):
+            APORising = False
+        elif int(APO[-1]) > int(APO[-2]):
+            APORising = True
+        
         # macd rising check
         MACDRising = False
         if numpy.isnan(MACD[-1]) or numpy.isnan(MACD[-2]):
@@ -183,6 +205,16 @@ class AlgoEvent:
         elif int(MACD[-1]) > int(MACD[-2]):
             MACDRising = True
         
+        # RSI check (additional)
+        RSIFastRising, RSIGeneralRising = False, False
+        if numpy.isnan(RSIFast[-1]) or numpy.isnan(RSIFast[-2]) or numpy.isnan(RSIGeneral[-2]) or numpy.isnan(RSIGeneral[-2]):
+            RSIFastRising, RSIGeneralRising = False, False
+        else:
+            if int(RSIFast[-1]) > int(RSIFast[-2]):
+                RSIFastRising = True
+            if int(RSIGeneral[-1]) > int(RSIGeneral[-2]):
+                RSIGeneralRising = True
+            
         # aroonosc rising check
         AROON_direction = 0 # not moving
         if numpy.isnan(AROONOsc[-1]) or numpy.isnan(AROONOsc[-2]):
@@ -200,10 +232,10 @@ class AlgoEvent:
         elif int(AROONOsc[-1]) > 0:
             AROON_positive = True
             
-        if APO > 0 and (MACDRising or AROON_direction == 1 or AROON_positive) and (price_above_longtermMA or LongTermEMA_rising) :
+        if (APORising or APO[-1] > 0) and (RSIFast[-1] > 50 or RSIFastRising or RSIGeneralRising) or (MACDRising or AROON_direction == 1 or AROON_positive) and (price_above_longtermMA or LongTermEMA_rising) and all_MA_up:
             return 1 # Bullish 
             
-        elif APO < 0 and (not MACDRising or AROON_direction == -1 or not AROON_positive) and (not price_above_longtermMA or not LongTermEMA_rising):
+        elif (not APORising or APO[-1] < 0) and (RSIFast[-1] < 50 or not RSIFastRising or not RSIGeneralRising) and (not MACDRising or AROON_direction == -1 or not AROON_positive) and (not price_above_longtermMA or not LongTermEMA_rising) and all_MA_down:
             return -1 # Bearish
         else:
             return 0 # Neutral
@@ -224,15 +256,16 @@ class AlgoEvent:
         order.ordertype = 0 #0=market_order, 1=limit_order, 2=stop_order
         self.evt.sendOrder(order)
     
-    def closeAllOrder(self):
+    def closeAllOrder(self, instrument):
         if not self.openOrder:
             return False
         for ID in self.openOrder:
-            order = AlgoAPIUtil.OrderObject(
-                tradeID = ID,
-                openclose = 'close'
-            )
-            self.evt.sendOrder(order)
+            if self.openOrder[ID]['instrument'] == instrument:
+                order = AlgoAPIUtil.OrderObject(
+                    tradeID = ID,
+                    openclose = 'close',
+                )
+                self.evt.sendOrder(order)
         return True
     
     # ATR trailing stop implementation
