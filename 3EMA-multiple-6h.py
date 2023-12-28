@@ -177,7 +177,7 @@ class AlgoEvent:
             candidate.sort()
             
             if count > 2:
-                candidate = candidate[1:]
+                candidate = candidate[:2]
                 count = 2
                 
             availableBalance = ab['availableBalance']
