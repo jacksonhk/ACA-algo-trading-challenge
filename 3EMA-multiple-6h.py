@@ -7,6 +7,7 @@
 from AlgoAPI import AlgoAPIUtil, AlgoAPI_Backtest
 from datetime import datetime, timedelta
 import talib, numpy
+import pandas as pd
 
 class AlgoEvent:
     def __init__(self):
@@ -22,6 +23,7 @@ class AlgoEvent:
         self.netOrder = {}
         self.lasttradetime = datetime(2000,1,1)
         self.stoploss_atr = 2.5
+        self.K, self.D = 3, 3
         
         self.candidate_no = 2
         self.risk_limit_portfolio = 0.2
@@ -54,6 +56,8 @@ class AlgoEvent:
                         'lowprice': numpy.array([]),
                         'lasttradetime': datetime(2000,1,1),
                         'atr': numpy.array([]),
+                        'K': numpy.array([]),
+                        'D': numpy.array([]),
                         'stoploss': 0,
                         'entry_signal': 0 # 1 == long, -1 == short, 0 == No signal
                     }
@@ -65,7 +69,7 @@ class AlgoEvent:
                 instrument_data['lowprice'] = numpy.append(instrument_data['lowprice'], bd[instrument]['lowPrice'])
                 # keep the most recent observations
                 time_period = (
-                    min(self.fastperiod + self.midperiod + self.slowperiod + 1, self.longperiod)
+                    max(self.fastperiod + self.midperiod + self.slowperiod + 1, self.longperiod)
                 )
                     
                 if len(instrument_data['arr_close']) > time_period:
@@ -101,6 +105,8 @@ class AlgoEvent:
                 instrument_data['arr_LongTermMA'] = talib.EMA(instrument_data['arr_close'], timeperiod=self.longperiod)
                     
                 # checking for entry signal
+                
+                # Entry Signal 2: Price cross above or below long term MA
                 price_above_longtermMA = instrument_data['arr_close'][-1] >= instrument_data['arr_LongTermMA'][-1] 
                 LongTermEMA_rising = False
                 price_cross_above_longtermMA = False
@@ -111,13 +117,33 @@ class AlgoEvent:
                     price_cross_above_longtermMA = instrument_data['arr_close'][-1] >= instrument_data['arr_LongTermMA'][-1] and instrument_data['arr_close'][-2] <= instrument_data['arr_LongTermMA'][-2]
                     price_cross_below_longtermMA = instrument_data['arr_close'][-1] <= instrument_data['arr_LongTermMA'][-1] and instrument_data['arr_close'][-2] >= instrument_data['arr_LongTermMA'][-2]
                     
-                
+                # Entry Signal 3: Pullback and Throwback implementation
                 pullback = False
                 throwback = False
                 if len(instrument_data['arr_close']) > 1:
                     pullback = instrument_data['arr_close'][-1] > instrument_data['arr_fastMA'][-1] and instrument_data['arr_close'][-2] < instrument_data['arr_fastMA'][-2] and instrument_data['arr_close'][-1] > instrument_data['arr_LongTermMA'][-1]
                     throwback = instrument_data['arr_close'][-1] < instrument_data['arr_fastMA'][-1] and instrument_data['arr_close'][-2] > instrument_data['arr_fastMA'][-2] and instrument_data['arr_close'][-1] < instrument_data['arr_LongTermMA'][-1]
+                
+                # Entry Signal 4: Stoch RSI implementation
+                K, D = self.stoch_rsi(instrument_data['arr_close'], k = self.K, d = self.D, period = self.general_period)
+                instrument_data['K'] = numpy.append(instrument_data['K'], K)
+                instrument_data['D'] = numpy.append(instrument_data['D'], D)
+                if len(instrument_data['K']) > time_period:
+                    instrument_data['K'] = instrument_data['K'][-time_period:]
+                    instrument_data['D'] = instrument_data['D'][-time_period:]
                     
+                k_crossabove_d = False
+                k_crossbelow_d = False
+                if len(instrument_data['K']) > 1 and len(instrument_data['D']) > 1:
+                    k_crossabove_d = instrument_data['K'][-1] >= instrument_data['D'][-1] and instrument_data['K'][-2] < instrument_data['D'][-2]
+                    k_crossbelow_d = instrument_data['K'][-1] <= instrument_data['D'][-1] and instrument_data['K'][-2] > instrument_data['D'][-2]
+                
+                long_stoch_rsi = k_crossabove_d and (instrument_data['arr_fastMA'][-1] > instrument_data['arr_slowMA'][-1] and instrument_data['arr_slowMA'][-1] > instrument_data['arr_LongTermMA'][-1])
+                
+                short_stoch_rsi = k_crossbelow_d and (instrument_data['arr_fastMA'][-1] < instrument_data['arr_slowMA'][-1] and instrument_data['arr_slowMA'][-1] < instrument_data['arr_LongTermMA'][-1])
+                
+                # Filters Calculation
+                
                 # Calculate the ADXR using talib.ADXR
                 adxr = talib.ADXR(instrument_data['highprice'], instrument_data['lowprice'], instrument_data['arr_close'], timeperiod=self.general_period)
                     
@@ -148,11 +174,11 @@ class AlgoEvent:
                     
                 if not numpy.isnan(instrument_data['arr_fastMA'][-1]) and not numpy.isnan(instrument_data['arr_fastMA'][-2]) and not numpy.isnan(instrument_data['arr_slowMA'][-1]) and not numpy.isnan(instrument_data['arr_slowMA'][-2]) and not numpy.isnan(instrument_data['arr_midMA'][-1]) and not numpy.isnan(instrument_data['arr_midMA'][-2]):
                     # send a buy order for Golden Cross (fastMA above slowMA, midMA crosses above slowMA)
-                    if (not ranging and bullish == 1) and ((instrument_data['arr_fastMA'][-1] > instrument_data['arr_slowMA'][-1] and instrument_data['arr_midMA'][-1] > instrument_data['arr_slowMA'][-1] and instrument_data['arr_midMA'][-2] < instrument_data['arr_slowMA'][-2]) or price_cross_above_longtermMA or pullback):
+                    if (not ranging and bullish == 1) and ((instrument_data['arr_fastMA'][-1] > instrument_data['arr_slowMA'][-1] and instrument_data['arr_midMA'][-1] > instrument_data['arr_slowMA'][-1] and instrument_data['arr_midMA'][-2] < instrument_data['arr_slowMA'][-2]) or price_cross_above_longtermMA or pullback or long_stoch_rsi):
                         instrument_data['entry_signal'] = 1
                         
                     # send a sell order for Death Cross
-                    elif (not ranging and bullish == -1) and ((instrument_data['arr_fastMA'][-1] < instrument_data['arr_slowMA'][-1] and instrument_data['arr_midMA'][-1] < instrument_data['arr_slowMA'][-1] and instrument_data['arr_midMA'][-2] > instrument_data['arr_slowMA'][-2]) or price_cross_below_longtermMA or throwback):
+                    elif (not ranging and bullish == -1) and ((instrument_data['arr_fastMA'][-1] < instrument_data['arr_slowMA'][-1] and instrument_data['arr_midMA'][-1] < instrument_data['arr_slowMA'][-1] and instrument_data['arr_midMA'][-2] > instrument_data['arr_slowMA'][-2]) or price_cross_below_longtermMA or throwback or short_stoch_rsi):
                         instrument_data['entry_signal'] = -1
                         
                     else:
@@ -210,6 +236,17 @@ class AlgoEvent:
         self.openOrder = oo
         self.netOrder = op
     
+    # Finder of Stochastic RSI
+    def stoch_rsi(self, arr_close, k, d, period):
+        rsi = talib.RSI(arr_close, period)
+        df = pd.DataFrame(rsi)
+        stochastic_rsi = 100 * (df - df.rolling(period).min()) / (df.rolling(period).max() - df.rolling(period).min())
+        K = stochastic_rsi.rolling(k).mean()
+        D = K.rolling(d).mean().iloc[-1].iloc[0]
+        K = K.iloc[-1].iloc[0]
+        return K, D 
+        # K and D are returned as a array
+
     def rangingFilter(self, ADXR, AROONOsc, MA_same_direction):
         if (ADXR < 20 or abs(AROONOsc) < 30) and not MA_same_direction:
             return True # ranging market
