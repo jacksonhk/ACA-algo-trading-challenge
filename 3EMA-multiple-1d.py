@@ -1,9 +1,3 @@
-
-
-
-
-
-
 from AlgoAPI import AlgoAPIUtil, AlgoAPI_Backtest
 from datetime import datetime, timedelta
 import talib, numpy
@@ -25,6 +19,7 @@ class AlgoEvent:
         self.stoploss_atr = 2.5
         self.K, self.D = 3, 3
         
+        self.risk_to_reward_ratio = 2.5
         self.candidate_no = 2
         self.risk_limit_portfolio = 0.2
         self.cooldown = 15
@@ -308,10 +303,10 @@ class AlgoEvent:
         order.instrument = instrument
         order.orderRef = 1
         if buysell==1: # buy order
-            order.takeProfitLevel = lastprice + 3.0 * stoploss
+            order.takeProfitLevel = lastprice + self.risk_to_reward_ratio * stoploss
             order.stopLossLevel = lastprice - stoploss
         elif buysell==-1:
-            order.takeProfitLevel = lastprice - 3.0 * stoploss
+            order.takeProfitLevel = lastprice - self.risk_to_reward_ratio * stoploss
             order.stopLossLevel = lastprice + stoploss
         order.volume = volume
         order.openclose = openclose
