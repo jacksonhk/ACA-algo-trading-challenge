@@ -167,7 +167,7 @@ class AlgoEvent:
                     MA_same_direction = all_MA_up or all_MA_down
                     
                 
-                ranging = self.rangingFilter(adxr[-1], aroonosc[-1], MA_same_direction)
+                ranging = self.rangingFilter(adxr[-1], aroonosc[-1], MA_same_direction, rsiGeneral)
                 bullish = self.momentumFilter(apo, macd, rsiFast, rsiGeneral, aroonosc, price_above_longtermMA, LongTermEMA_rising, all_MA_up, all_MA_down)
                     
                     
@@ -247,8 +247,8 @@ class AlgoEvent:
         return K, D 
         # K and D are returned as a array
 
-    def rangingFilter(self, ADXR, AROONOsc, MA_same_direction):
-        if (ADXR < 20 or abs(AROONOsc) < 30) and not MA_same_direction:
+    def rangingFilter(self, ADXR, AROONOsc, MA_same_direction, rsi):
+        if ((ADXR < 20 or abs(AROONOsc) < 30) and not MA_same_direction) or 40 < rsi[-1] < 60:
             return True # ranging market
         else:
             return False
