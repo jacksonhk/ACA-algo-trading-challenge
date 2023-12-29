@@ -23,7 +23,7 @@ class AlgoEvent:
         self.lasttradetime = datetime(2000,1,1)
         self.stoploss_atr = 2.5
         
-        self.candidate_no = 3
+        self.candidate_no = 2
         self.risk_limit_portfolio = 0.2
         self.cooldown = 15
  
