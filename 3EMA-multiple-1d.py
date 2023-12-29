@@ -245,9 +245,10 @@ class AlgoEvent:
         D = K.rolling(d).mean().iloc[-1].iloc[0]
         K = K.iloc[-1].iloc[0]
         return K, D 
+        # K and D are returned as a array
 
     def rangingFilter(self, ADXR, AROONOsc, MA_same_direction, rsi):
-        if ((ADXR < 20 or abs(AROONOsc) < 30) and not MA_same_direction) or 40 < rsi[-1] < 60:
+        if ((ADXR < 20 or abs(AROONOsc) < 30) or not MA_same_direction) or 40 < rsi[-1] < 60:
             return True # ranging market
         else:
             return False
