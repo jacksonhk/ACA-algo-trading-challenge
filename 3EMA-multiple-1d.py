@@ -290,7 +290,7 @@ class AlgoEvent:
         elif int(AROONOsc[-1]) > 0:
             AROON_positive = True
             
-        if (APORising or APO[-1] > 0) and (RSIFast[-1] > 50 or RSIFastRising or RSIGeneralRising) and (MACDRising or AROON_direction == 1 or AROON_positive) and (price_above_longtermMA or LongTermEMA_rising) and all_MA_up:
+        if (APORising or APO[-1] > 0) and (RSIFast[-1] > 50 or RSIFastRising or RSIGeneralRising) or (MACDRising or AROON_direction == 1 or AROON_positive) and (price_above_longtermMA or LongTermEMA_rising) and all_MA_up:
             return 1 # Bullish 
             
         elif (not APORising or APO[-1] < 0) and (RSIFast[-1] < 50 or not RSIFastRising or not RSIGeneralRising) and (not MACDRising or AROON_direction == -1 or not AROON_positive) and (not price_above_longtermMA or not LongTermEMA_rising) and all_MA_down:
