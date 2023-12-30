@@ -14,6 +14,6 @@ Crypto:
                    Momentum Filters: APO, MACD, RSI, AROON Oscillator, Price above long term EMA, Long Term EMA rising<br />
                    Time Horizon: 1 day<br />
                    Stop loss: ATR trailing stop; Take profit (static): 2.5X stop loss <br />
-                   Systems to rank instruments: Lowest ATR (to minimize drawdown)
+                   Systems to rank instruments: Lowest ATR (to minimize drawdown) <br />
                    Performance: Sharpe Ratio: 0.93 <br />
-                                Mean Annual Return: 47%
+                                Mean Annual Return: 47% <br />
