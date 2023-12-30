@@ -19,6 +19,7 @@ class AlgoEvent:
         self.stoploss_atr = 2.5
         self.K, self.D = 3, 3
         
+        self.allowance_allocation_ratio = 0.9
         self.risk_to_reward_ratio = 2.5
         self.candidate_no = 2
         self.risk_limit_portfolio = 0.2
@@ -101,6 +102,16 @@ class AlgoEvent:
                     
                 # checking for entry signal
                 
+                 # Ranging/Momentum filter: all short-term moving average move in same direction
+                
+                fast, mid, slow = instrument_data['arr_fastMA'], instrument_data['arr_midMA'], instrument_data['arr_slowMA']
+                all_MA_up, all_MA_down, MA_same_direction = False, False, False
+                if len(fast) > 1 and len(mid) > 1 and len(slow) > 1:
+                    all_MA_up = fast[-1] > fast[-2] and mid[-1] > mid[-2] and slow[-1] > slow[-2]
+                    all_MA_down = fast[-1] < fast[-2] and mid[-1] < mid[-2] and slow[-1] < slow[-2]
+                    MA_same_direction = all_MA_up or all_MA_down
+                    
+                    
                 # Entry Signal 2: Price cross above or below long term MA
                 price_above_longtermMA = instrument_data['arr_close'][-1] >= instrument_data['arr_LongTermMA'][-1] 
                 LongTermEMA_rising = False
@@ -109,15 +120,18 @@ class AlgoEvent:
                     
                 if len(instrument_data['arr_LongTermMA']) > 1:
                     LongTermEMA_rising = instrument_data['arr_LongTermMA'][-1] >= instrument_data['arr_LongTermMA'][-2]
-                    price_cross_above_longtermMA = instrument_data['arr_close'][-1] >= instrument_data['arr_LongTermMA'][-1] and instrument_data['arr_close'][-2] <= instrument_data['arr_LongTermMA'][-2]
-                    price_cross_below_longtermMA = instrument_data['arr_close'][-1] <= instrument_data['arr_LongTermMA'][-1] and instrument_data['arr_close'][-2] >= instrument_data['arr_LongTermMA'][-2]
+                    price_cross_above_longtermMA = instrument_data['arr_close'][-1] >= instrument_data['arr_LongTermMA'][-1] and instrument_data['arr_close'][-2] <= instrument_data['arr_LongTermMA'][-2] and instrument_data['arr_LongTermMA'][-1] > instrument_data['arr_LongTermMA'][-2] and all_MA_up
+                    price_cross_below_longtermMA = instrument_data['arr_close'][-1] <= instrument_data['arr_LongTermMA'][-1] and instrument_data['arr_close'][-2] >= instrument_data['arr_LongTermMA'][-2] and instrument_data['arr_LongTermMA'][-1] < instrument_data['arr_LongTermMA'][-2] and all_MA_down
                     
                 # Entry Signal 3: Pullback and Throwback implementation
                 pullback = False
                 throwback = False
                 if len(instrument_data['arr_close']) > 1:
-                    pullback = instrument_data['arr_close'][-1] > instrument_data['arr_fastMA'][-1] and instrument_data['arr_close'][-2] < instrument_data['arr_fastMA'][-2] and instrument_data['arr_close'][-1] > instrument_data['arr_LongTermMA'][-1]
-                    throwback = instrument_data['arr_close'][-1] < instrument_data['arr_fastMA'][-1] and instrument_data['arr_close'][-2] > instrument_data['arr_fastMA'][-2] and instrument_data['arr_close'][-1] < instrument_data['arr_LongTermMA'][-1]
+                    pullback = instrument_data['arr_close'][-1] > instrument_data['arr_midMA'][-1] and instrument_data['arr_close'][-2] < instrument_data['arr_midMA'][-2] and instrument_data['arr_close'][-1] > instrument_data['arr_LongTermMA'][-1] and instrument_data['arr_midMA'][-1] > instrument_data['arr_LongTermMA'][-1]
+                    pullbackSlow = instrument_data['arr_close'][-1] > instrument_data['arr_slowMA'][-1] and instrument_data['arr_close'][-2] < instrument_data['arr_slowMA'][-2] and instrument_data['arr_close'][-1] > instrument_data['arr_LongTermMA'][-1] and instrument_data['arr_slowMA'][-1] > instrument_data['arr_LongTermMA'][-1]
+                    throwback = instrument_data['arr_close'][-1] < instrument_data['arr_midMA'][-1] and instrument_data['arr_close'][-2] > instrument_data['arr_midMA'][-2] and instrument_data['arr_close'][-1] < instrument_data['arr_LongTermMA'][-1] and instrument_data['arr_midMA'][-1] < instrument_data['arr_LongTermMA'][-1]
+                    throwbackSlow = instrument_data['arr_close'][-1] < instrument_data['arr_slowMA'][-1] and instrument_data['arr_close'][-2] > instrument_data['arr_slowMA'][-2] and instrument_data['arr_close'][-1] < instrument_data['arr_LongTermMA'][-1] and instrument_data['arr_slowMA'][-1] < instrument_data['arr_LongTermMA'][-1]
+                    pullback, throwback = pullback or pullbackSlow, throwback or throwbackSlow
                 
                 # Entry Signal 4: Stoch RSI implementation
                 K, D = self.stoch_rsi(instrument_data['arr_close'], k = self.K, d = self.D, period = self.general_period)
@@ -152,17 +166,9 @@ class AlgoEvent:
                 aroon_up, aroon_down = talib.AROON(instrument_data['highprice'], instrument_data['lowprice'], timeperiod=self.general_period)
                 aroonosc = aroon_up - aroon_down
                     
-                # Ranging filter: all short-term moving average move in same direction
+              
                 
-                fast, mid, slow = instrument_data['arr_fastMA'], instrument_data['arr_midMA'], instrument_data['arr_slowMA']
-                all_MA_up, all_MA_down, MA_same_direction = False, False, False
-                if len(fast) > 1 and len(mid) > 1 and len(slow) > 1:
-                    all_MA_up = fast[-1] > fast[-2] and mid[-1] > mid[-2] and slow[-1] > slow[-2]
-                    all_MA_down = fast[-1] < fast[-2] and mid[-1] < mid[-2] and slow[-1] < slow[-2]
-                    MA_same_direction = all_MA_up or all_MA_down
-                    
-                
-                ranging = self.rangingFilter(adxr[-1], aroonosc[-1], MA_same_direction, rsiGeneral)
+                ranging = self.rangingFilter(adxr, aroonosc, MA_same_direction, rsiGeneral)
                 bullish = self.momentumFilter(apo, macd, rsiFast, rsiGeneral, aroonosc, price_above_longtermMA, LongTermEMA_rising, all_MA_up, all_MA_down)
                     
                     
@@ -248,7 +254,10 @@ class AlgoEvent:
         # K and D are returned as a array
 
     def rangingFilter(self, ADXR, AROONOsc, MA_same_direction, rsi):
-        if ((ADXR < 20 or abs(AROONOsc) < 30) or not MA_same_direction) or 40 < rsi[-1] < 60:
+        lowest_rsi, highest_rsi = min(rsi), max(rsi)
+        maxchange_rsi = max(abs(rsi[-1] - lowest_rsi), abs(rsi[-1] - highest_rsi), 0)
+        maxchange_ADXR = ADXR[-1] - min(ADXR)
+        if (ADXR[-1] < 20) or abs(AROONOsc[-1]) < 20 or 40 < rsi[-1] < 60 :
             return True # ranging market
         else:
             return False
@@ -353,10 +362,10 @@ class AlgoEvent:
     def find_positionSize(self, lastprice, allowance):
         res = self.evt.getAccountBalance()
         availableBalance = res["availableBalance"]
-        ratio = 0.9
+        ratio = self.allowance_allocation_ratio
         volume = (allowance*ratio) / lastprice
         total =  volume * lastprice
-        while total < 0.9 * allowance:
+        while total < self.allowance_allocation_ratio * allowance:
             ratio *= 1.05
             volume = (allowance*ratio) / lastprice
             total =  volume * lastprice
