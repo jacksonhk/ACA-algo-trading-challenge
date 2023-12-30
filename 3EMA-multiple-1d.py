@@ -169,11 +169,16 @@ class AlgoEvent:
                     
                 if not numpy.isnan(instrument_data['arr_fastMA'][-1]) and not numpy.isnan(instrument_data['arr_fastMA'][-2]) and not numpy.isnan(instrument_data['arr_slowMA'][-1]) and not numpy.isnan(instrument_data['arr_slowMA'][-2]) and not numpy.isnan(instrument_data['arr_midMA'][-1]) and not numpy.isnan(instrument_data['arr_midMA'][-2]):
                     # send a buy order for Golden Cross (fastMA above slowMA, midMA crosses above slowMA)
-                    if (not ranging and bullish == 1) and ((instrument_data['arr_fastMA'][-1] > instrument_data['arr_slowMA'][-1] and instrument_data['arr_midMA'][-1] > instrument_data['arr_slowMA'][-1] and instrument_data['arr_midMA'][-2] < instrument_data['arr_slowMA'][-2]) or price_cross_above_longtermMA or pullback or long_stoch_rsi):
+                    
+                    EMA3_GoldenCross = instrument_data['arr_fastMA'][-1] > instrument_data['arr_slowMA'][-1] and instrument_data['arr_midMA'][-1] > instrument_data['arr_slowMA'][-1] and instrument_data['arr_fastMA'][-2] < instrument_data['arr_slowMA'][-2]
+                    EMA3_DeathCross = instrument_data['arr_fastMA'][-1] < instrument_data['arr_slowMA'][-1] and instrument_data['arr_midMA'][-1] < instrument_data['arr_slowMA'][-1] and instrument_data['arr_fastMA'][-2] > instrument_data['arr_slowMA'][-2]
+                    
+                    
+                    if (not ranging and bullish == 1) and (EMA3_GoldenCross or price_cross_above_longtermMA or pullback or long_stoch_rsi):
                         instrument_data['entry_signal'] = 1
                         
                     # send a sell order for Death Cross
-                    elif (not ranging and bullish == -1) and ((instrument_data['arr_fastMA'][-1] < instrument_data['arr_slowMA'][-1] and instrument_data['arr_midMA'][-1] < instrument_data['arr_slowMA'][-1] and instrument_data['arr_midMA'][-2] > instrument_data['arr_slowMA'][-2]) or price_cross_below_longtermMA or throwback or short_stoch_rsi):
+                    elif (not ranging and bullish == -1) and (EMA3_DeathCross or price_cross_below_longtermMA or throwback or short_stoch_rsi):
                         instrument_data['entry_signal'] = -1
                         
                     else:
