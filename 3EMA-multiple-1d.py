@@ -19,7 +19,7 @@ class AlgoEvent:
         self.stoploss_atr = 2.5
         self.K, self.D = 3, 3
         
-        self.allowance_allocation_ratio = 0.9
+        self.allowance_allocation_ratio = 0.85
         self.risk_to_reward_ratio = 2.5
         self.candidate_no = 2
         self.risk_limit_portfolio = 0.2
@@ -120,8 +120,8 @@ class AlgoEvent:
                     
                 if len(instrument_data['arr_LongTermMA']) > 1:
                     LongTermEMA_rising = instrument_data['arr_LongTermMA'][-1] >= instrument_data['arr_LongTermMA'][-2]
-                    price_cross_above_longtermMA = instrument_data['arr_close'][-1] >= instrument_data['arr_LongTermMA'][-1] and instrument_data['arr_close'][-2] <= instrument_data['arr_LongTermMA'][-2] and instrument_data['arr_LongTermMA'][-1] > instrument_data['arr_LongTermMA'][-2] and all_MA_up
-                    price_cross_below_longtermMA = instrument_data['arr_close'][-1] <= instrument_data['arr_LongTermMA'][-1] and instrument_data['arr_close'][-2] >= instrument_data['arr_LongTermMA'][-2] and instrument_data['arr_LongTermMA'][-1] < instrument_data['arr_LongTermMA'][-2] and all_MA_down
+                    price_cross_above_longtermMA = instrument_data['arr_close'][-1] >= instrument_data['arr_LongTermMA'][-1] and instrument_data['arr_close'][-2] <= instrument_data['arr_LongTermMA'][-2] and instrument_data['arr_LongTermMA'][-1] > instrument_data['arr_LongTermMA'][-2] 
+                    price_cross_below_longtermMA = instrument_data['arr_close'][-1] <= instrument_data['arr_LongTermMA'][-1] and instrument_data['arr_close'][-2] >= instrument_data['arr_LongTermMA'][-2] and instrument_data['arr_LongTermMA'][-1] < instrument_data['arr_LongTermMA'][-2] 
                     
                 # Entry Signal 3: Pullback and Throwback implementation
                 pullback = False
