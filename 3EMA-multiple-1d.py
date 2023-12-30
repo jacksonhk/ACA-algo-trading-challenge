@@ -5,23 +5,24 @@ import pandas as pd
 
 class AlgoEvent:
     def __init__(self):
-        
+        # EMA timeperiod
         self.fastperiod = 5
         self.midperiod = 8
         self.slowperiod = 13
         self.longperiod = 50
         self.atr_period = 14
         self.general_period = 14
-        self.instrument_data = {}
+        
+        self.instrument_data = {} # variable to store multiple instrument
         self.openOrder = {}
         self.netOrder = {}
         self.lasttradetime = datetime(2000,1,1)
-        self.stoploss_atr = 2.5
-        self.K, self.D = 3, 3
+        self.stoploss_atr = 2.5 # ATR width
+        self.K, self.D = 3, 3 # stoch rsi
         
         self.allowance_allocation_ratio = 0.85
-        self.risk_to_reward_ratio = 2.5
-        self.candidate_no = 2
+        self.risk_to_reward_ratio = 2.5 # TP: Risk to reward ratio * stoploss
+        self.candidate_no = 2 # Max number of trades for every time taking
         self.risk_limit_portfolio = 0.2
         self.cooldown = 15
  
@@ -166,7 +167,8 @@ class AlgoEvent:
                 aroon_up, aroon_down = talib.AROON(instrument_data['highprice'], instrument_data['lowprice'], timeperiod=self.general_period)
                 aroonosc = aroon_up - aroon_down
                     
-              
+
+                # Filters Calculation: Ranging and Momentum
                 
                 ranging = self.rangingFilter(adxr, aroonosc, MA_same_direction, rsiGeneral)
                 bullish = self.momentumFilter(apo, macd, rsiFast, rsiGeneral, aroonosc, price_above_longtermMA, LongTermEMA_rising, all_MA_up, all_MA_down)
@@ -181,17 +183,17 @@ class AlgoEvent:
                     
                     
                     if (not ranging and bullish == 1) and (EMA3_GoldenCross or price_cross_above_longtermMA or pullback or long_stoch_rsi):
-                        instrument_data['entry_signal'] = 1
+                        instrument_data['entry_signal'] = 1 # Long
                         
                     # send a sell order for Death Cross
                     elif (not ranging and bullish == -1) and (EMA3_DeathCross or price_cross_below_longtermMA or throwback or short_stoch_rsi):
-                        instrument_data['entry_signal'] = -1
+                        instrument_data['entry_signal'] = -1 # Short
                         
                     else:
-                        instrument_data['entry_signal'] = 0
+                        instrument_data['entry_signal'] = 0 # No Signal
                         
                 else:
-                    instrument_data['entry_signal'] = 0
+                    instrument_data['entry_signal'] = 0 # No Signal
             
                 # update stoploss point dynamically
                 if self.openOrder:
@@ -214,13 +216,17 @@ class AlgoEvent:
                 candidate = candidate[:self.candidate_no]
                 count = self.candidate_no
             
-            # TODO: count can be used as market breath    
             availableBalance = ab['availableBalance']
-            
-            #TODO: checking for existing position, if same instrument have existing position, sell the position before opening new one
+
+
+            # Opening position base on entry signal
             for stoploss_ratio, instrument in candidate: 
+                
+                # Checking for existing position, if same instrument have existing position, sell the position before opening new one
                 if instrument in self.openOrder and self.openOrder[instrument][buysell] != self.instrument_data[instrument]['entry_signal']:
                     self.closeAllOrder(instrument)
+
+                # New position 
                 lastprice = bd[instrument]['lastPrice']
                 volume = self.find_positionSize(lastprice, count/self.candidate_no * 1/self.no_instrument * availableBalance * 2)
                 direction = self.instrument_data[instrument]['entry_signal']
@@ -251,12 +257,9 @@ class AlgoEvent:
         D = K.rolling(d).mean().iloc[-1].iloc[0]
         K = K.iloc[-1].iloc[0]
         return K, D 
-        # K and D are returned as a array
-
+        # K and D are returned as a value
+    
     def rangingFilter(self, ADXR, AROONOsc, MA_same_direction, rsi):
-        lowest_rsi, highest_rsi = min(rsi), max(rsi)
-        maxchange_rsi = max(abs(rsi[-1] - lowest_rsi), abs(rsi[-1] - highest_rsi), 0)
-        maxchange_ADXR = ADXR[-1] - min(ADXR)
         if (ADXR[-1] < 20) or abs(AROONOsc[-1]) < 20 or 40 < rsi[-1] < 60 :
             return True # ranging market
         else:
@@ -297,7 +300,8 @@ class AlgoEvent:
             AROON_direction = -1 # moving downwards
         else:
             AROON_direction = 0 # not moving
-        
+
+        # aroon oscillator positive check
         AROON_positive = False
         if numpy.isnan(AROONOsc[-1]):
             AROON_positive = False
