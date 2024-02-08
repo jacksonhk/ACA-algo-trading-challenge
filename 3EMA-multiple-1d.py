@@ -1,35 +1,38 @@
-from AlgoAPI import AlgoAPIUtil, AlgoAPI_Backtest
+
+
+
+
+from AlgoAPI import AlgoAPIUtil, AlgoAPI_Livetest
 from datetime import datetime, timedelta
 import talib, numpy
 import pandas as pd
 
 class AlgoEvent:
     def __init__(self):
-        # EMA timeperiod
+        
         self.fastperiod = 5
         self.midperiod = 8
         self.slowperiod = 13
         self.longperiod = 50
         self.atr_period = 14
         self.general_period = 14
-        
-        self.instrument_data = {} # variable to store multiple instrument
+        self.instrument_data = {}
         self.openOrder = {}
         self.netOrder = {}
         self.lasttradetime = datetime(2000,1,1)
-        self.stoploss_atr = 2.5 # ATR width
-        self.K, self.D = 3, 3 # stoch rsi
+        self.stoploss_atr = 2.5
+        self.K, self.D = 3, 3
         
         self.allowance_allocation_ratio = 0.85
-        self.risk_to_reward_ratio = 2.5 # TP: Risk to reward ratio * stoploss
-        self.candidate_no = 2 # Max number of trades for every time taking
+        self.risk_to_reward_ratio = 2.5
+        self.candidate_no = 2
         self.risk_limit_portfolio = 0.2
         self.cooldown = 15
  
     def start(self, mEvt):
         self.myinstrument = mEvt['subscribeList'][0]
         self.no_instrument = len(mEvt['subscribeList'])
-        self.evt = AlgoAPI_Backtest.AlgoEvtHandler(self, mEvt)
+        self.evt = AlgoAPI_Livetest.AlgoEvtHandler(self, mEvt)
         self.evt.update_portfolio_sl(sl=self.risk_limit_portfolio, resume_after=60*60*24*self.cooldown)
         self.evt.start()
 
@@ -43,8 +46,10 @@ class AlgoEvent:
                 return # do not trade if timeframe does not match
             for instrument in bd:
                 if instrument not in self.instrument_data:
+                    obs = self.evt.getHistoricalBar(contract={"instrument":instrument}, numOfBar=max(self.fastperiod + self.midperiod + self.slowperiod + 1, self.longperiod), interval="D")
+
                     self.instrument_data[instrument] = {
-                        'arr_close': numpy.array([]),
+                        'arr_close': numpy.array([obs[t]['c'] for t in obs]),
                         'arr_fastMA': numpy.array([]),
                         'arr_midMA': numpy.array([]),
                         'arr_slowMA': numpy.array([]),
@@ -69,7 +74,7 @@ class AlgoEvent:
                     max(self.fastperiod + self.midperiod + self.slowperiod + 1, self.longperiod)
                 )
                     
-                if len(instrument_data['arr_close']) > time_period:
+                if len(instrument_data['arr_close']) >= time_period:
                     instrument_data['arr_close'] = instrument_data['arr_close'][-time_period:]
                         
                 # keep the most recent observations
@@ -89,7 +94,16 @@ class AlgoEvent:
                 instrument_data['arr_slowMA'] = talib.DEMA(
                     instrument_data['arr_close'], timeperiod=self.slowperiod
                 )
-                    
+                
+                if not len(instrument_data['arr_close']) == len(instrument_data['highprice']) == len(instrument_data['lowprice']):
+                    minlength = min(len(instrument_data['arr_close']), len(instrument_data['highprice']), len(instrument_data['lowprice']))
+                    while len(instrument_data['arr_close']) > minlength:
+                        instrument_data['arr_close'].popleft()
+                    while len(instrument_data['highprice']) > minlength:
+                        instrument_data['highprice'].popleft() 
+                    while len(instrument_data['lowprice']) > minlength:
+                        instrument_data['lowprice'].popleft() 
+                        
                 instrument_data['atr'] = talib.ATR(
                     instrument_data['highprice'],
                     instrument_data['lowprice'],
@@ -167,8 +181,7 @@ class AlgoEvent:
                 aroon_up, aroon_down = talib.AROON(instrument_data['highprice'], instrument_data['lowprice'], timeperiod=self.general_period)
                 aroonosc = aroon_up - aroon_down
                     
-
-                # Filters Calculation: Ranging and Momentum
+              
                 
                 ranging = self.rangingFilter(adxr, aroonosc, MA_same_direction, rsiGeneral)
                 bullish = self.momentumFilter(apo, macd, rsiFast, rsiGeneral, aroonosc, price_above_longtermMA, LongTermEMA_rising, all_MA_up, all_MA_down)
@@ -183,17 +196,17 @@ class AlgoEvent:
                     
                     
                     if (not ranging and bullish == 1) and (EMA3_GoldenCross or price_cross_above_longtermMA or pullback or long_stoch_rsi):
-                        instrument_data['entry_signal'] = 1 # Long
+                        instrument_data['entry_signal'] = 1
                         
                     # send a sell order for Death Cross
                     elif (not ranging and bullish == -1) and (EMA3_DeathCross or price_cross_below_longtermMA or throwback or short_stoch_rsi):
-                        instrument_data['entry_signal'] = -1 # Short
+                        instrument_data['entry_signal'] = -1
                         
                     else:
-                        instrument_data['entry_signal'] = 0 # No Signal
+                        instrument_data['entry_signal'] = 0
                         
                 else:
-                    instrument_data['entry_signal'] = 0 # No Signal
+                    instrument_data['entry_signal'] = 0
             
                 # update stoploss point dynamically
                 if self.openOrder:
@@ -216,17 +229,13 @@ class AlgoEvent:
                 candidate = candidate[:self.candidate_no]
                 count = self.candidate_no
             
+            # TODO: count can be used as market breath    
             availableBalance = ab['availableBalance']
-
-
-            # Opening position base on entry signal
+            
+            #TODO: checking for existing position, if same instrument have existing position, sell the position before opening new one
             for stoploss_ratio, instrument in candidate: 
-                
-                # Checking for existing position, if same instrument have existing position, sell the position before opening new one
                 if instrument in self.openOrder and self.openOrder[instrument][buysell] != self.instrument_data[instrument]['entry_signal']:
                     self.closeAllOrder(instrument)
-
-                # New position 
                 lastprice = bd[instrument]['lastPrice']
                 volume = self.find_positionSize(lastprice, count/self.candidate_no * 1/self.no_instrument * availableBalance * 2)
                 direction = self.instrument_data[instrument]['entry_signal']
@@ -257,9 +266,12 @@ class AlgoEvent:
         D = K.rolling(d).mean().iloc[-1].iloc[0]
         K = K.iloc[-1].iloc[0]
         return K, D 
-        # K and D are returned as a value
-    
+        # K and D are returned as a array
+
     def rangingFilter(self, ADXR, AROONOsc, MA_same_direction, rsi):
+        lowest_rsi, highest_rsi = min(rsi), max(rsi)
+        maxchange_rsi = max(abs(rsi[-1] - lowest_rsi), abs(rsi[-1] - highest_rsi), 0)
+        maxchange_ADXR = ADXR[-1] - min(ADXR)
         if (ADXR[-1] < 20) or abs(AROONOsc[-1]) < 20 or 40 < rsi[-1] < 60 :
             return True # ranging market
         else:
@@ -300,8 +312,7 @@ class AlgoEvent:
             AROON_direction = -1 # moving downwards
         else:
             AROON_direction = 0 # not moving
-
-        # aroon oscillator positive check
+        
         AROON_positive = False
         if numpy.isnan(AROONOsc[-1]):
             AROON_positive = False
@@ -379,3 +390,4 @@ class AlgoEvent:
             total =  volume * lastprice
         return volume
     
+
